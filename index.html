@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Paradas de Conveyor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* Color de fondo más claro */
+        }
+        .tab-active {
+            border-bottom-color: #0d9488; /* Verde azulado para la pestaña activa */
+            color: #0d9488;
+            font-weight: 600;
+        }
+        @keyframes blink {
+            50% { opacity: 0.6; }
+        }
+        .blinking {
+            animation: blink 1.5s linear infinite;
+        }
+        /* Estilos personalizados para un look más profesional */
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: box-shadow 0.3s ease-in-out;
+        }
+        .card:hover {
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+        }
+        .btn-primary {
+            background-color: #0d9488; /* Verde azulado */
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0f766e;
+        }
+        .btn-start {
+            background-color: #f59e0b; /* Ambar para iniciar */
+        }
+        .btn-start:hover {
+            background-color: #d97706;
+        }
+        .btn-stop {
+            background-color: #10b981; /* Verde esmeralda para detener */
+        }
+        .btn-stop:hover {
+            background-color: #059669;
+        }
+        .status-running {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        .status-stopped {
+            background-color: #fffbeb;
+            color: #b45309;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-10 text-center">
+            <div class="inline-flex items-center justify-center gap-3">
+                <!-- Icono alusivo a medical devices/etiquetado -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-syringe"><path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15 1"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/></svg>
+                <div>
+                    <h1 class="text-4xl font-bold text-gray-900">Monitor de Procesos de Etiquetado</h1>
+                    <p class="text-gray-500 mt-1">Análisis de Paradas en Líneas de Dispositivos Médicos</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="border-b border-gray-200 mb-8">
+            <nav class="-mb-px flex justify-center space-x-8" aria-label="Tabs">
+                <button id="tab-live" class="flex items-center gap-2 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm tab-active">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Control en Vivo
+                </button>
+                <button id="tab-summary" class="flex items-center gap-2 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8a6 6 0 0 0-8.1-4.3"/><path d="M13 17a6 6 0 0 0 8.1-4.3"/></svg>
+                    Resumen y Análisis
+                </button>
+            </nav>
+        </div>
+
+        <main>
+            <div id="live-view">
+                <div class="mb-8 flex flex-col items-center justify-center space-y-2">
+                    <label for="line-selector" class="text-lg font-medium text-gray-800">Monitorear Línea de Producción</label>
+                    <select id="line-selector" class="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md shadow-sm">
+                        <option value="1">Línea 1</option><option value="2">Línea 2</option><option value="3">Línea 3</option><option value="4">Línea 4</option>
+                    </select>
+                </div>
+                <div id="live-card-container" class="max-w-md mx-auto"></div>
+            </div>
+
+            <div id="summary-view" class="hidden">
+                <div class="card p-6">
+                    <h2 class="text-2xl font-semibold mb-6">Historial y Análisis de Paradas</h2>
+                    <div class="flex flex-wrap gap-4 items-end mb-6 bg-gray-50 p-4 rounded-lg border">
+                        <div>
+                            <label for="filter-line" class="block text-sm font-medium text-gray-700">Línea</label>
+                            <select id="filter-line" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md">
+                                <option value="all">Todas las Líneas</option><option value="1">Línea 1</option><option value="2">Línea 2</option><option value="3">Línea 3</option><option value="4">Línea 4</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="filter-start-date" class="block text-sm font-medium text-gray-700">Desde</label>
+                            <input type="date" id="filter-start-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="filter-end-date" class="block text-sm font-medium text-gray-700">Hasta</label>
+                            <input type="date" id="filter-end-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm">
+                        </div>
+                        <button id="apply-filters" class="btn-primary px-4 py-2 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">Aplicar Filtros</button>
+                    </div>
+
+                    <div id="charts-view" class="mb-10">
+                        <h3 class="text-xl font-semibold mb-6 text-center">Visualización de Datos</h3>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="bg-slate-50 p-4 rounded-lg h-96"><h4 class="text-lg font-medium text-center mb-2">Principales Motivos de Parada</h4><canvas id="reasonsChart"></canvas></div>
+                            <div class="bg-slate-50 p-4 rounded-lg h-96"><h4 class="text-lg font-medium text-center mb-2">Impacto por Línea</h4><canvas id="linesChart"></canvas></div>
+                        </div>
+                    </div>
+                    
+                    <h3 class="text-xl font-semibold mb-4">Registro Detallado</h3>
+                    <div class="overflow-x-auto border rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Línea</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inicio</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fin</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duración (mins)</th>
+                        </tr></thead><tbody id="summary-table-body" class="bg-white divide-y divide-gray-200"></tbody></table>
+                        <p id="no-summary-data" class="text-center py-8 text-gray-500 hidden">No hay datos de paradas para mostrar con los filtros seleccionados.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <div id="error-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden"><div class="card p-8 max-w-sm w-full"><div class="flex items-center gap-3 mb-4"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><h3 class="text-xl font-bold text-red-600">Error</h3></div><p id="error-message" class="text-gray-700 mb-6"></p><button id="close-error-modal" class="w-full bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none">Cerrar</button></div></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        const NUM_LINES = 4;
+        const REASONS = ["Espera de producto por material con error en sistema", "Cambio de orden", "Falta de Inspector de calidad", "Espera de entrega de material", "Espera de entrega de material de otros lotes o ítems", "Espera de confirmación de pick", "Cambio de label", "Usuario AM expirado", "Cambio de ribbon", "Espera de aprobación del cliente", "Reunión operativa", "Ajuste de printer (información cortada)", "Espera de material (IFU)", "Espera de material (Labels)", "Espera de material (Inserts)", "Error en sistema por orden reservada por otro usuario", "Ajuste de printer (etiquetas ilegibles)", "Printer averiado (Reemplazo de componentes)", "Falta de personal para inicio de corrida", "Ajuste de printer (letras mal formadas)", "Ajuste de printer (ajustes de guía)", "Printer averiado (Cambio de Platen Roller)", "Ajuste de printer (Limpieza de Cabezal del printer)", "Reinicio del computador", "Actualización del computador", "Error en sistema JDE", "Error de lectura del Escaner", "Ajuste de Escaner", "Ajuste de printer (Ajuste de guía y limpieza de cabezal)", "Cambio de ribon y limpieza del printer", "Cambio de label y limpieza del printer", "Dispensador de tape averiado", "Dispensadora de labels averiada", "Ajuste de dispensadora de labels", "Ajuste de dispensador de tape", "Pick extraviado", "Ajuste de printer (información cortada)", "Ajuste de printer (Label atascado)", "Verificación de paleta por diferencia en el cuadre de labels", "Falta de personal", "Espera de colocar material en la línea", "Espera de tape", "Ajuste de printer (Etiquetas manchadas)", "Ajuste de parámetros del printer", "Espera de material handler", "Ajuste de printer (cambio de parámetros)", "Ajuste de printer (Limpieza de printer)"];
+        const lineStates = [];
+        let currentLineIndex = 0;
+        let reasonsChartInstance = null;
+        let linesChartInstance = null;
+
+        const liveView = document.getElementById('live-view');
+        const summaryView = document.getElementById('summary-view');
+        const tabLive = document.getElementById('tab-live');
+        const tabSummary = document.getElementById('tab-summary');
+        const summaryTableBody = document.getElementById('summary-table-body');
+        const noSummaryData = document.getElementById('no-summary-data');
+        const applyFiltersBtn = document.getElementById('apply-filters');
+        const lineSelector = document.getElementById('line-selector');
+        const liveCardContainer = document.getElementById('live-card-container');
+        const errorModal = document.getElementById('error-modal');
+        const errorMessage = document.getElementById('error-message');
+        const closeErrorModal = document.getElementById('close-error-modal');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorModal.classList.remove('hidden');
+        }
+
+        closeErrorModal.addEventListener('click', () => { errorModal.classList.add('hidden'); });
+        
+        function createLiveCard() {
+            liveCardContainer.innerHTML = `
+                <div id="live-card" class="card p-6 transition-all duration-300">
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 id="live-card-title" class="text-2xl font-bold text-gray-900"></h2>
+                        <span id="live-card-status" class="px-3 py-1 text-sm font-semibold rounded-full"></span>
+                    </div>
+                    <div id="live-card-timer" class="text-center text-5xl font-mono my-8 text-gray-700">00:00:00</div>
+                    <div class="mb-6"><select id="live-card-reason" disabled class="block w-full bg-gray-100 border-gray-300 rounded-md shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm"><option value="">-- Seleccione un motivo de parada --</option>${REASONS.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
+                    <button id="live-card-toggle-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 text-lg"></button>
+                </div>`;
+            document.getElementById('live-card-toggle-btn').addEventListener('click', handleToggleClick);
+        }
+
+        function updateLiveCardView() {
+            const lineState = lineStates[currentLineIndex];
+            if (!lineState) return;
+            const lineNum = currentLineIndex + 1;
+            const isStopped = lineState.isStopped;
+
+            const card = document.getElementById('live-card');
+            const titleEl = document.getElementById('live-card-title');
+            const statusEl = document.getElementById('live-card-status');
+            const timerEl = document.getElementById('live-card-timer');
+            const reasonEl = document.getElementById('live-card-reason');
+            const toggleBtn = document.getElementById('live-card-toggle-btn');
+            
+            titleEl.textContent = `Línea ${lineNum}`;
+
+            if (isStopped) {
+                card.classList.add('border', 'border-amber-300');
+                statusEl.textContent = 'Detenido';
+                statusEl.className = 'px-3 py-1 text-sm font-semibold rounded-full status-stopped blinking';
+                timerEl.classList.add('text-amber-600');
+                reasonEl.disabled = false;
+                reasonEl.classList.remove('bg-gray-100');
+                toggleBtn.textContent = 'Reanudar Línea';
+                toggleBtn.className = 'w-full font-bold py-3 px-4 rounded-lg transition-colors duration-300 text-lg btn-stop';
+            } else {
+                card.classList.remove('border', 'border-amber-300');
+                statusEl.textContent = 'En Operación';
+                statusEl.className = 'px-3 py-1 text-sm font-semibold rounded-full status-running';
+                timerEl.classList.remove('text-amber-600');
+                timerEl.textContent = '00:00:00';
+                reasonEl.disabled = true;
+                reasonEl.value = '';
+                reasonEl.classList.add('bg-gray-100');
+                toggleBtn.textContent = 'Iniciar Parada';
+                toggleBtn.className = 'w-full font-bold py-3 px-4 rounded-lg transition-colors duration-300 text-lg btn-start text-white';
+            }
+        }
+        
+        function handleToggleClick() {
+            lineStates[currentLineIndex].isStopped ? endStop(currentLineIndex) : startStop(currentLineIndex);
+        }
+
+        lineSelector.addEventListener('change', (e) => {
+            currentLineIndex = parseInt(e.target.value, 10) - 1;
+            updateLiveCardView();
+        });
+
+        const formatTime = (seconds) => [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60].map(v => v.toString().padStart(2, '0')).join(':');
+        
+        function updateTimer(lineIndex) {
+            const line = lineStates[lineIndex];
+            if (line.isStopped && line.startTime) {
+                const elapsedSeconds = Math.floor((new Date() - line.startTime) / 1000);
+                if (lineIndex === currentLineIndex) {
+                    document.getElementById('live-card-timer').textContent = formatTime(elapsedSeconds);
+                }
+            }
+        }
+        
+        async function startStop(lineIndex) {
+            try {
+                const docRef = await addDoc(collection(db, `artifacts/${appId}/public/data/stops`), { lineId: lineIndex + 1, startTime: serverTimestamp(), endTime: null, reason: null });
+                lineStates[lineIndex] = { ...lineStates[lineIndex], isStopped: true, stopId: docRef.id, startTime: new Date(), timerInterval: setInterval(() => updateTimer(lineIndex), 1000) };
+                updateLiveCardView();
+            } catch (error) { console.error("Error al iniciar parada: ", error); showError("No se pudo registrar el inicio de la parada."); }
+        }
+        
+        async function endStop(lineIndex) {
+            const line = lineStates[lineIndex];
+            const reason = document.getElementById('live-card-reason').value;
+            if (!reason) { showError("Por favor, seleccione un motivo para la parada."); return; }
+            if (!line.stopId) { showError("Error: No se encontró el ID de la parada activa."); return; }
+
+            try {
+                await updateDoc(doc(db, `artifacts/${appId}/public/data/stops`, line.stopId), { endTime: serverTimestamp(), reason: reason });
+                clearInterval(line.timerInterval);
+                lineStates[lineIndex] = { isStopped: false, stopId: null, timerInterval: null, startTime: null };
+                updateLiveCardView();
+            } catch (error) { console.error("Error al detener parada: ", error); showError("No se pudo registrar el fin de la parada."); }
+        }
+
+        function switchTab(targetTab) {
+            if (targetTab === 'summary') {
+                summaryView.classList.remove('hidden'); liveView.classList.add('hidden');
+                tabSummary.classList.add('tab-active'); tabLive.classList.remove('tab-active');
+                fetchAndDisplaySummary();
+            } else {
+                liveView.classList.remove('hidden'); summaryView.classList.add('hidden');
+                tabLive.classList.add('tab-active'); tabSummary.classList.remove('tab-active');
+            }
+        }
+        
+        tabLive.addEventListener('click', () => switchTab('live'));
+        tabSummary.addEventListener('click', () => switchTab('summary'));
+        
+        async function fetchAndDisplaySummary() {
+            const lineFilter = document.getElementById('filter-line').value;
+            const startDateFilter = document.getElementById('filter-start-date').value;
+            const endDateFilter = document.getElementById('filter-end-date').value;
+
+            try {
+                const constraints = [];
+                if (lineFilter !== 'all') constraints.push(where("lineId", "==", parseInt(lineFilter, 10)));
+                if (startDateFilter) constraints.push(where("startTime", ">=", Timestamp.fromDate(new Date(startDateFilter))));
+                if (endDateFilter) { const end = new Date(endDateFilter); end.setHours(23, 59, 59, 999); constraints.push(where("startTime", "<=", Timestamp.fromDate(end))); }
+                
+                const q = query(collection(db, `artifacts/${appId}/public/data/stops`), ...constraints);
+                const querySnapshot = await getDocs(q);
+                
+                const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.startTime?.toMillis() || 0) - (a.startTime?.toMillis() || 0));
+                
+                renderSummaryTable(allStops);
+                renderCharts(allStops);
+
+            } catch(error) { console.error("Error fetching summary data:", error); showError("No se pudo cargar el resumen de paradas."); }
+        }
+        
+        function renderSummaryTable(stops) {
+            const completedStops = stops.filter(s => s.startTime && s.endTime);
+            noSummaryData.classList.toggle('hidden', completedStops.length > 0);
+            summaryTableBody.innerHTML = completedStops.map(stop => {
+                const durationMinutes = ((stop.endTime.toDate() - stop.startTime.toDate()) / 60000).toFixed(2);
+                return `<tr>
+                    <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Línea ${stop.lineId}</span></td>
+                    <td class="px-6 py-4 text-sm text-gray-800">${stop.reason || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${stop.startTime.toDate().toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${stop.endTime.toDate().toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${durationMinutes}</td>
+                </tr>`;
+            }).join('');
+        }
+        
+        function renderCharts(stops) {
+            if (reasonsChartInstance) reasonsChartInstance.destroy();
+            if (linesChartInstance) linesChartInstance.destroy();
+
+            const completedStops = stops.filter(s => s.startTime && s.endTime);
+            const reasonsData = completedStops.reduce((acc, stop) => {
+                const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
+                const reason = stop.reason || 'Sin Motivo';
+                acc[reason] = (acc[reason] || 0) + duration;
+                return acc;
+            }, {});
+            
+            const sortedReasons = Object.entries(reasonsData).sort(([, a], [, b]) => b - a).slice(0, 10);
+            const linesData = completedStops.reduce((acc, stop) => {
+                const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
+                acc[stop.lineId] = (acc[stop.lineId] || 0) + duration;
+                return acc;
+            }, {});
+
+            reasonsChartInstance = new Chart(document.getElementById('reasonsChart'), {
+                type: 'bar',
+                data: { labels: sortedReasons.map(r => r[0]), datasets: [{ label: 'Minutos Totales', data: sortedReasons.map(r => r[1].toFixed(2)), backgroundColor: '#0d9488' }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+            linesChartInstance = new Chart(document.getElementById('linesChart'), {
+                type: 'pie',
+                data: { labels: Object.keys(linesData).map(l => `Línea ${l}`), datasets: [{ data: Object.values(linesData).map(v => v.toFixed(2)), backgroundColor: ['#14b8a6', '#f59e0b', '#64748b', '#3b82f6'] }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+        
+        applyFiltersBtn.addEventListener('click', fetchAndDisplaySummary);
+
+        async function initialize() {
+            for (let i = 0; i < NUM_LINES; i++) lineStates.push({ isStopped: false, stopId: null, timerInterval: null, startTime: null });
+            createLiveCard();
+            updateLiveCardView();
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth);
+            } catch (error) { console.error("Authentication failed:", error); showError("No se pudo autenticar. La aplicación podría no funcionar correctamente."); }
+        }
+
+        initialize();
+    </script>
+</body>
+</html>
+

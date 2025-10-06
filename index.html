@@ -152,7 +152,16 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
+        // Tu configuración de Firebase
+        const firebaseConfig = {
+          apiKey: "AIzaSyCPSaT7mS5HTb-rJS3FeSnFH4RNC8o8Mu8",
+          authDomain: "supplemental-405ba.firebaseapp.com",
+          projectId: "supplemental-405ba",
+          storageBucket: "supplemental-405ba.appspot.com",
+          messagingSenderId: "700177290441",
+          appId: "1:700177290441:web:e4b7cc9157b76e83892918"
+        };
+        
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         
         const app = initializeApp(firebaseConfig);
@@ -370,12 +379,24 @@
             createLiveCard();
             updateLiveCardView();
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth);
-            } catch (error) { console.error("Authentication failed:", error); showError("No se pudo autenticar. La aplicación podría no funcionar correctamente."); }
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                if (error.code === 'auth/configuration-not-found') {
+                    showError("Error de Configuración: El método de 'Inicio de sesión anónimo' no está habilitado en tu proyecto de Firebase. Por favor, ve a la sección 'Authentication' -> 'Sign-in method' en tu consola de Firebase y actívalo.");
+                } else {
+                    showError("No se pudo autenticar. La aplicación podría no funcionar correctamente.");
+                }
+            }
         }
 
         initialize();
     </script>
 </body>
 </html>
+
 

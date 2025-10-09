@@ -194,6 +194,18 @@
                 <button id="close-error-modal" class="w-full bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none">Cerrar</button>
             </div>
         </div>
+        
+        <!-- Modal de Seguridad -->
+        <div id="security-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden">
+            <div class="card p-8 max-w-sm w-full">
+                <h3 class="text-xl font-bold text-gray-900 mb-4">Acceso Restringido</h3>
+                <p class="text-gray-600 mb-4">Por favor, ingrese el código de acceso para ver el resumen.</p>
+                <input type="password" id="security-code-input" class="w-full px-3 py-2 border border-gray-300 rounded-md mb-2" placeholder="Código de 4 dígitos">
+                <p id="security-error" class="text-red-500 text-sm mb-4 h-5"></p>
+                <button id="verify-security-code" class="w-full btn-primary py-2 rounded-md">Verificar</button>
+                <button id="close-security-modal" class="w-full mt-2 text-gray-600 hover:text-gray-800">Cancelar</button>
+            </div>
+        </div>
     </div>
 
     <script type="module">
@@ -250,6 +262,16 @@
         const prevPageBtn = document.getElementById('prev-page');
         const nextPageBtn = document.getElementById('next-page');
         const pageInfo = document.getElementById('page-info');
+        const securityModal = document.getElementById('security-modal');
+        const securityCodeInput = document.getElementById('security-code-input');
+        const verifySecurityCodeBtn = document.getElementById('verify-security-code');
+        const closeSecurityModalBtn = document.getElementById('close-security-modal');
+        const securityError = document.getElementById('security-error');
+
+        // --- CÓDIGO DE SEGURIDAD ---
+        // CAMBIA ESTE CÓDIGO POR UNO PERSONALIZADO DE 4 DÍGITOS
+        const SUMMARY_ACCESS_CODE = "5555"; 
+        let isSummaryUnlocked = false;
 
         function showError(message) {
             errorMessage.textContent = message;
@@ -383,8 +405,41 @@
         }
         
         tabLive.addEventListener('click', () => switchTab('live'));
-        tabSummary.addEventListener('click', () => switchTab('summary'));
+        tabSummary.addEventListener('click', () => {
+            if (isSummaryUnlocked) {
+                switchTab('summary');
+            } else {
+                securityModal.classList.remove('hidden');
+                securityCodeInput.focus();
+            }
+        });
         
+        verifySecurityCodeBtn.addEventListener('click', () => {
+            if (securityCodeInput.value === SUMMARY_ACCESS_CODE) {
+                isSummaryUnlocked = true;
+                securityError.textContent = '';
+                securityCodeInput.value = '';
+                securityModal.classList.add('hidden');
+                switchTab('summary');
+            } else {
+                securityError.textContent = 'Código incorrecto. Inténtelo de nuevo.';
+                securityCodeInput.value = '';
+                securityCodeInput.focus();
+            }
+        });
+
+        closeSecurityModalBtn.addEventListener('click', () => {
+            securityError.textContent = '';
+            securityCodeInput.value = '';
+            securityModal.classList.add('hidden');
+        });
+
+        securityCodeInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                verifySecurityCodeBtn.click();
+            }
+        });
+
         async function applyFiltersAndFetch() {
             currentPage = 1;
             pageSnapshots.clear();
@@ -661,4 +716,5 @@
     </script>
 </body>
 </html>
+" and the user is asking a question about it.
 

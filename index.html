@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Librería para exportar a Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -119,6 +121,10 @@
                             <input type="date" id="filter-end-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm">
                         </div>
                         <button id="apply-filters" class="btn-primary px-4 py-2 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">Aplicar Filtros</button>
+                        <button id="export-excel" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Exportar a Excel
+                        </button>
                     </div>
 
                     <div id="charts-view" class="mb-10">
@@ -150,14 +156,14 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Tu configuración de Firebase
+        // Tu configuración de Firebase - ¡ACTUALIZADA!
         const firebaseConfig = {
           apiKey: "AIzaSyCPSaT7mS5HTb-rJS3FeSnFH4RNC8o8Mu8",
           authDomain: "supplemental-405ba.firebaseapp.com",
           projectId: "supplemental-405ba",
-          storageBucket: "supplemental-405ba.appspot.com",
+          storageBucket: "supplemental-405ba.firebasestorage.app",
           messagingSenderId: "700177290441",
           appId: "1:700177290441:web:e4b7cc9157b76e83892918"
         };
@@ -182,6 +188,7 @@
         const summaryTableBody = document.getElementById('summary-table-body');
         const noSummaryData = document.getElementById('no-summary-data');
         const applyFiltersBtn = document.getElementById('apply-filters');
+        const exportExcelBtn = document.getElementById('export-excel');
         const lineSelector = document.getElementById('line-selector');
         const liveCardContainer = document.getElementById('live-card-container');
         const errorModal = document.getElementById('error-modal');
@@ -310,7 +317,8 @@
             const endDateFilter = document.getElementById('filter-end-date').value;
 
             try {
-                const constraints = [];
+                const constraints = [orderBy("startTime", "desc")];
+                
                 if (lineFilter !== 'all') constraints.push(where("lineId", "==", parseInt(lineFilter, 10)));
                 if (startDateFilter) constraints.push(where("startTime", ">=", Timestamp.fromDate(new Date(startDateFilter))));
                 if (endDateFilter) { const end = new Date(endDateFilter); end.setHours(23, 59, 59, 999); constraints.push(where("startTime", "<=", Timestamp.fromDate(end))); }
@@ -318,7 +326,7 @@
                 const q = query(collection(db, `artifacts/${appId}/public/data/stops`), ...constraints);
                 const querySnapshot = await getDocs(q);
                 
-                const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.startTime?.toMillis() || 0) - (a.startTime?.toMillis() || 0));
+                const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
                 renderSummaryTable(allStops);
                 renderCharts(allStops);
@@ -372,7 +380,34 @@
             });
         }
         
+        function exportToExcel() {
+            const rows = document.querySelectorAll("#summary-table-body tr");
+            if (rows.length === 0) {
+                showError("No hay datos en la tabla para exportar.");
+                return;
+            }
+
+            const data = Array.from(rows).map(row => {
+                const cells = row.querySelectorAll("td");
+                return {
+                    "Línea": cells[0].innerText.replace('Línea ', ''),
+                    "Motivo": cells[1].innerText,
+                    "Inicio de Parada": cells[2].innerText,
+                    "Fin de Parada": cells[3].innerText,
+                    "Duración (mins)": parseFloat(cells[4].innerText)
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Resumen de Paradas");
+
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(workbook, `Resumen_Paradas_${today}.xlsx`);
+        }
+
         applyFiltersBtn.addEventListener('click', fetchAndDisplaySummary);
+        exportExcelBtn.addEventListener('click', exportToExcel);
 
         async function initialize() {
             for (let i = 0; i < NUM_LINES; i++) lineStates.push({ isStopped: false, stopId: null, timerInterval: null, startTime: null });
@@ -398,5 +433,4 @@
     </script>
 </body>
 </html>
-
 

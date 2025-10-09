@@ -62,6 +62,10 @@
             background-color: #fffbeb;
             color: #b45309;
         }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body class="text-gray-800">
@@ -136,6 +140,10 @@
                             <input type="date" id="filter-end-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm">
                         </div>
                         <button id="apply-filters" class="btn-primary px-4 py-2 rounded-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">Aplicar Filtros</button>
+                        <button id="monthly-summary-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center gap-2">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-days"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                            Analizar Mes Actual
+                        </button>
                         <button id="export-excel" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Exportar a Excel
@@ -147,6 +155,10 @@
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div class="bg-slate-50 p-4 rounded-lg h-96"><h4 class="text-lg font-medium text-center mb-2">Principales Motivos de Parada</h4><canvas id="reasonsChart"></canvas></div>
                             <div class="bg-slate-50 p-4 rounded-lg h-96"><h4 class="text-lg font-medium text-center mb-2">Impacto por Línea</h4><canvas id="linesChart"></canvas></div>
+                        </div>
+                        <div class="mt-8 bg-slate-50 p-4 rounded-lg h-96">
+                            <h4 class="text-lg font-medium text-center mb-2">Comparativo Diario de Paradas (Tendencia)</h4>
+                            <canvas id="trendChart"></canvas>
                         </div>
                     </div>
                     
@@ -161,6 +173,12 @@
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duración (mins)</th>
                         </tr></thead><tbody id="summary-table-body" class="bg-white divide-y divide-gray-200"></tbody></table>
                         <p id="no-summary-data" class="text-center py-8 text-gray-500 hidden">No hay datos de paradas para mostrar con los filtros seleccionados.</p>
+                    </div>
+                     <!-- Controles de Paginación -->
+                    <div id="pagination-controls" class="flex justify-between items-center mt-4">
+                        <button id="prev-page" class="pagination-btn bg-gray-300 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-400">Anterior</button>
+                        <span id="page-info" class="text-sm font-medium text-gray-700"></span>
+                        <button id="next-page" class="pagination-btn bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700">Siguiente</button>
                     </div>
                 </div>
             </div>
@@ -181,7 +199,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp, orderBy, limit, startAfter, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         const firebaseConfig = {
           apiKey: "AIzaSyCPSaT7mS5HTb-rJS3FeSnFH4RNC8o8Mu8",
@@ -204,6 +222,14 @@
         let currentLineIndex = 0;
         let reasonsChartInstance = null;
         let linesChartInstance = null;
+        let trendChartInstance = null;
+
+        // Estado de paginación
+        let currentPage = 1;
+        const PAGE_SIZE = 25;
+        let pageSnapshots = new Map();
+        let totalPages = 1;
+        let currentQueryConstraints = [];
 
         const liveView = document.getElementById('live-view');
         const summaryView = document.getElementById('summary-view');
@@ -212,6 +238,7 @@
         const summaryTableBody = document.getElementById('summary-table-body');
         const noSummaryData = document.getElementById('no-summary-data');
         const applyFiltersBtn = document.getElementById('apply-filters');
+        const monthlySummaryBtn = document.getElementById('monthly-summary-btn');
         const exportExcelBtn = document.getElementById('export-excel');
         const lineSelector = document.getElementById('line-selector');
         const liveCardContainer = document.getElementById('live-card-container');
@@ -220,6 +247,9 @@
         const closeErrorModal = document.getElementById('close-error-modal');
         const filterReason = document.getElementById('filter-reason');
         const filterShift = document.getElementById('filter-shift');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const pageInfo = document.getElementById('page-info');
 
         function showError(message) {
             errorMessage.textContent = message;
@@ -345,7 +375,7 @@
             if (targetTab === 'summary') {
                 summaryView.classList.remove('hidden'); liveView.classList.add('hidden');
                 tabSummary.classList.add('tab-active'); tabLive.classList.remove('tab-active');
-                fetchAndDisplaySummary();
+                applyFiltersAndFetch();
             } else {
                 liveView.classList.remove('hidden'); summaryView.classList.add('hidden');
                 tabLive.classList.add('tab-active'); tabSummary.classList.remove('tab-active');
@@ -355,42 +385,93 @@
         tabLive.addEventListener('click', () => switchTab('live'));
         tabSummary.addEventListener('click', () => switchTab('summary'));
         
-        async function fetchAndDisplaySummary() {
+        async function applyFiltersAndFetch() {
+            currentPage = 1;
+            pageSnapshots.clear();
+
             const lineFilter = document.getElementById('filter-line').value;
             const shiftFilter = document.getElementById('filter-shift').value;
             const reasonFilter = document.getElementById('filter-reason').value;
             const startDateFilter = document.getElementById('filter-start-date').value;
             const endDateFilter = document.getElementById('filter-end-date').value;
 
-            try {
-                const constraints = [orderBy("startTime", "desc")];
-                
-                if (lineFilter !== 'all') constraints.push(where("lineId", "==", parseInt(lineFilter, 10)));
-                if (shiftFilter !== 'all') constraints.push(where("shift", "==", shiftFilter));
-                if (reasonFilter !== 'all') constraints.push(where("reason", "==", reasonFilter));
+            const constraints = [orderBy("startTime", "desc")];
+            if (lineFilter !== 'all') constraints.push(where("lineId", "==", parseInt(lineFilter, 10)));
+            if (shiftFilter !== 'all') constraints.push(where("shift", "==", shiftFilter));
+            if (reasonFilter !== 'all') constraints.push(where("reason", "==", reasonFilter));
+            if (startDateFilter) {
+                const parts = startDateFilter.split('-');
+                const start = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+                constraints.push(where("startTime", ">=", Timestamp.fromDate(start)));
+            }
+            if (endDateFilter) { 
+                const parts = endDateFilter.split('-');
+                const end = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999));
+                constraints.push(where("startTime", "<=", Timestamp.fromDate(end))); 
+            }
+            currentQueryConstraints = constraints;
 
-                if (startDateFilter) {
-                    const parts = startDateFilter.split('-');
-                    const start = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-                    constraints.push(where("startTime", ">=", Timestamp.fromDate(start)));
-                }
-                if (endDateFilter) { 
-                    const parts = endDateFilter.split('-');
-                    const end = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999));
-                    constraints.push(where("startTime", "<=", Timestamp.fromDate(end))); 
+            try {
+                const countQuery = query(collection(db, `artifacts/${appId}/public/data/stops`), ...constraints.filter(c => c.type !== 'orderBy'));
+                const countSnapshot = await getCountFromServer(countQuery);
+                const totalStops = countSnapshot.data().count;
+                totalPages = Math.ceil(totalStops / PAGE_SIZE) || 1;
+                fetchPage();
+            } catch(error) {
+                console.error("Error fetching summary data:", error);
+                showError("No se pudo cargar el resumen de paradas. Es posible que necesite crear un índice en Firebase. Revise la consola del navegador (F12) para obtener un enlace directo y crearlo.");
+            }
+        }
+
+        async function fetchPage() {
+            try {
+                let pageQuery;
+                const baseQuery = query(collection(db, `artifacts/${appId}/public/data/stops`), ...currentQueryConstraints);
+
+                if (currentPage > 1 && pageSnapshots.has(currentPage - 1)) {
+                    pageQuery = query(baseQuery, startAfter(pageSnapshots.get(currentPage - 1)), limit(PAGE_SIZE));
+                } else {
+                    pageQuery = query(baseQuery, limit(PAGE_SIZE));
                 }
                 
-                const q = query(collection(db, `artifacts/${appId}/public/data/stops`), ...constraints);
-                const querySnapshot = await getDocs(q);
+                const querySnapshot = await getDocs(pageQuery);
+                
+                if (!querySnapshot.empty) {
+                    const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+                    pageSnapshots.set(currentPage, lastDoc);
+                }
                 
                 const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
                 renderSummaryTable(allStops);
-                renderCharts(allStops);
-
-            } catch(error) { console.error("Error fetching summary data:", error); showError("No se pudo cargar el resumen de paradas. Es posible que necesite crear un índice en Firebase. Revise la consola del navegador (F12) para obtener un enlace directo y crearlo."); }
+                // Fetch all data for charts to be accurate for the whole filtered period
+                fetchAllFilteredDataForCharts();
+                updatePaginationUI();
+            } catch(error) {
+                 console.error("Error fetching page data:", error);
+                 showError("No se pudo cargar la página. Es posible que falte un índice en Firebase.");
+            }
         }
         
+        async function fetchAllFilteredDataForCharts() {
+            try {
+                const fullQuery = query(collection(db, `artifacts/${appId}/public/data/stops`), ...currentQueryConstraints);
+                const querySnapshot = await getDocs(fullQuery);
+                const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderCharts(allStops);
+            } catch (error) {
+                console.error("Error fetching full data for charts:", error);
+                // Don't show an error to the user, just log it. Charts might be out of sync.
+            }
+        }
+
+        function updatePaginationUI() {
+            pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
+            prevPageBtn.disabled = currentPage === 1;
+            nextPageBtn.disabled = currentPage === totalPages;
+            document.getElementById('pagination-controls').classList.toggle('hidden', totalPages <= 1);
+        }
+
         function renderSummaryTable(stops) {
             const completedStops = stops.filter(s => s.startTime && s.endTime);
             noSummaryData.classList.toggle('hidden', completedStops.length > 0);
@@ -410,8 +491,11 @@
         function renderCharts(stops) {
             if (reasonsChartInstance) reasonsChartInstance.destroy();
             if (linesChartInstance) linesChartInstance.destroy();
+            if (trendChartInstance) trendChartInstance.destroy();
 
             const completedStops = stops.filter(s => s.startTime && s.endTime);
+            
+            // Data for Reasons and Lines charts
             const reasonsData = completedStops.reduce((acc, stop) => {
                 const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
                 const reason = stop.reason || 'Sin Motivo';
@@ -420,49 +504,98 @@
             }, {});
             
             const sortedReasons = Object.entries(reasonsData).sort(([, a], [, b]) => b - a).slice(0, 10);
+            
             const linesData = completedStops.reduce((acc, stop) => {
                 const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
                 acc[stop.lineId] = (acc[stop.lineId] || 0) + duration;
                 return acc;
             }, {});
 
+            // Data for Trend Chart
+            const dailyData = completedStops.reduce((acc, stop) => {
+                const date = stop.startTime.toDate().toISOString().slice(0, 10);
+                const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
+                acc[date] = (acc[date] || 0) + duration;
+                return acc;
+            }, {});
+
+            const sortedDays = Object.entries(dailyData).sort(([a], [b]) => a.localeCompare(b));
+
             reasonsChartInstance = new Chart(document.getElementById('reasonsChart'), {
                 type: 'bar',
                 data: { labels: sortedReasons.map(r => r[0]), datasets: [{ label: 'Minutos Totales', data: sortedReasons.map(r => r[1].toFixed(2)), backgroundColor: '#0d9488' }] },
                 options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
+
             linesChartInstance = new Chart(document.getElementById('linesChart'), {
                 type: 'pie',
                 data: { labels: Object.keys(linesData).map(l => `Línea ${l}`), datasets: [{ data: Object.values(linesData).map(v => v.toFixed(2)), backgroundColor: ['#14b8a6', '#f59e0b', '#64748b', '#3b82f6'] }] },
                 options: { responsive: true, maintainAspectRatio: false }
             });
+
+            trendChartInstance = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: sortedDays.map(d => d[0]),
+                    datasets: [{
+                        label: 'Minutos Totales de Parada por Día',
+                        data: sortedDays.map(d => d[1].toFixed(2)),
+                        borderColor: '#0d9488',
+                        backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Minutos de Parada' }
+                        }
+                    }
+                }
+            });
         }
         
-        function exportToExcel() {
-            const rows = document.querySelectorAll("#summary-table-body tr");
-            if (rows.length === 0) {
-                showError("No hay datos en la tabla para exportar.");
-                return;
+        async function exportToExcel() {
+            showError("Generando reporte completo... Esto puede tardar unos segundos.");
+
+            try {
+                const q = query(collection(db, `artifacts/${appId}/public/data/stops`), ...currentQueryConstraints);
+                const querySnapshot = await getDocs(q);
+                const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                const completedStops = allStops.filter(s => s.startTime && s.endTime);
+
+                if (completedStops.length === 0) {
+                    showError("No hay datos para exportar con los filtros seleccionados.");
+                    return;
+                }
+
+                const data = completedStops.map(stop => ({
+                    "Línea": stop.lineId,
+                    "Turno": stop.shift || 'N/A',
+                    "Motivo": stop.reason || 'N/A',
+                    "Inicio de Parada": stop.startTime.toDate().toLocaleString(),
+                    "Fin de Parada": stop.endTime.toDate().toLocaleString(),
+                    "Duración (mins)": parseFloat(((stop.endTime.toDate() - stop.startTime.toDate()) / 60000).toFixed(2))
+                }));
+
+                const worksheet = XLSX.utils.json_to_sheet(data);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Resumen de Paradas");
+
+                const today = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(workbook, `Resumen_Paradas_${today}.xlsx`);
+                
+                document.getElementById('error-modal').classList.add('hidden');
+
+            } catch (error) {
+                 console.error("Error exporting to Excel:", error);
+                 showError("No se pudo generar el reporte de Excel. Inténtelo de nuevo.");
             }
-
-            const data = Array.from(rows).map(row => {
-                const cells = row.querySelectorAll("td");
-                return {
-                    "Línea": cells[0].innerText.replace('Línea ', ''),
-                    "Turno": cells[1].innerText,
-                    "Motivo": cells[2].innerText,
-                    "Inicio de Parada": cells[3].innerText,
-                    "Fin de Parada": cells[4].innerText,
-                    "Duración (mins)": parseFloat(cells[5].innerText)
-                };
-            });
-
-            const worksheet = XLSX.utils.json_to_sheet(data);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Resumen de Paradas");
-
-            const today = new Date().toISOString().slice(0, 10);
-            XLSX.writeFile(workbook, `Resumen_Paradas_${today}.xlsx`);
         }
         
         function populateReasonFilter() {
@@ -474,8 +607,34 @@
             });
         }
 
-        applyFiltersBtn.addEventListener('click', fetchAndDisplaySummary);
+        function generateMonthlySummary() {
+            const now = new Date();
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+            const formatDate = (date) => date.toISOString().slice(0, 10);
+
+            document.getElementById('filter-start-date').value = formatDate(firstDay);
+            document.getElementById('filter-end-date').value = formatDate(lastDay);
+
+            applyFiltersAndFetch();
+        }
+
+        applyFiltersBtn.addEventListener('click', applyFiltersAndFetch);
+        monthlySummaryBtn.addEventListener('click', generateMonthlySummary);
         exportExcelBtn.addEventListener('click', exportToExcel);
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                fetchPage();
+            }
+        });
+        nextPageBtn.addEventListener('click', () => {
+             if (currentPage < totalPages) {
+                currentPage++;
+                fetchPage();
+            }
+        });
 
         async function initialize() {
             populateReasonFilter();

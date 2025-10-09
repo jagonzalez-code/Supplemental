@@ -113,6 +113,13 @@
                             </select>
                         </div>
                         <div>
+                            <label for="filter-reason" class="block text-sm font-medium text-gray-700">Motivo</label>
+                            <select id="filter-reason" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md">
+                                <option value="all">Todos los Motivos</option>
+                                <!-- Options will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div>
                             <label for="filter-start-date" class="block text-sm font-medium text-gray-700">Desde</label>
                             <input type="date" id="filter-start-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm">
                         </div>
@@ -158,7 +165,6 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, addDoc, updateDoc, serverTimestamp, query, where, getDocs, Timestamp, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Tu configuración de Firebase - ¡ACTUALIZADA!
         const firebaseConfig = {
           apiKey: "AIzaSyCPSaT7mS5HTb-rJS3FeSnFH4RNC8o8Mu8",
           authDomain: "supplemental-405ba.firebaseapp.com",
@@ -194,6 +200,7 @@
         const errorModal = document.getElementById('error-modal');
         const errorMessage = document.getElementById('error-message');
         const closeErrorModal = document.getElementById('close-error-modal');
+        const filterReason = document.getElementById('filter-reason');
 
         function showError(message) {
             errorMessage.textContent = message;
@@ -313,6 +320,7 @@
         
         async function fetchAndDisplaySummary() {
             const lineFilter = document.getElementById('filter-line').value;
+            const reasonFilter = document.getElementById('filter-reason').value;
             const startDateFilter = document.getElementById('filter-start-date').value;
             const endDateFilter = document.getElementById('filter-end-date').value;
 
@@ -320,8 +328,18 @@
                 const constraints = [orderBy("startTime", "desc")];
                 
                 if (lineFilter !== 'all') constraints.push(where("lineId", "==", parseInt(lineFilter, 10)));
-                if (startDateFilter) constraints.push(where("startTime", ">=", Timestamp.fromDate(new Date(startDateFilter))));
-                if (endDateFilter) { const end = new Date(endDateFilter); end.setHours(23, 59, 59, 999); constraints.push(where("startTime", "<=", Timestamp.fromDate(end))); }
+                if (reasonFilter !== 'all') constraints.push(where("reason", "==", reasonFilter));
+
+                if (startDateFilter) {
+                    const parts = startDateFilter.split('-');
+                    const start = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+                    constraints.push(where("startTime", ">=", Timestamp.fromDate(start)));
+                }
+                if (endDateFilter) { 
+                    const parts = endDateFilter.split('-');
+                    const end = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999));
+                    constraints.push(where("startTime", "<=", Timestamp.fromDate(end))); 
+                }
                 
                 const q = query(collection(db, `artifacts/${appId}/public/data/stops`), ...constraints);
                 const querySnapshot = await getDocs(q);
@@ -331,7 +349,7 @@
                 renderSummaryTable(allStops);
                 renderCharts(allStops);
 
-            } catch(error) { console.error("Error fetching summary data:", error); showError("No se pudo cargar el resumen de paradas."); }
+            } catch(error) { console.error("Error fetching summary data:", error); showError("No se pudo cargar el resumen de paradas. Es posible que necesite crear un índice en Firebase. Revise la consola del navegador (F12) para obtener un enlace directo y crearlo."); }
         }
         
         function renderSummaryTable(stops) {
@@ -405,11 +423,21 @@
             const today = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(workbook, `Resumen_Paradas_${today}.xlsx`);
         }
+        
+        function populateReasonFilter() {
+            REASONS.forEach(reason => {
+                const option = document.createElement('option');
+                option.value = reason;
+                option.textContent = reason;
+                filterReason.appendChild(option);
+            });
+        }
 
         applyFiltersBtn.addEventListener('click', fetchAndDisplaySummary);
         exportExcelBtn.addEventListener('click', exportToExcel);
 
         async function initialize() {
+            populateReasonFilter();
             for (let i = 0; i < NUM_LINES; i++) lineStates.push({ isStopped: false, stopId: null, timerInterval: null, startTime: null });
             createLiveCard();
             updateLiveCardView();

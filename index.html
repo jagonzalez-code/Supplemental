@@ -300,7 +300,6 @@
 
 
         // --- CÓDIGO DE SEGURIDAD ---
-        // CAMBIA ESTE CÓDIGO POR UNO PERSONALIZADO DE 4 DÍGITOS
         const SUMMARY_ACCESS_CODE = "5555"; 
         let isSummaryUnlocked = false;
 
@@ -701,6 +700,94 @@
 
             applyFiltersAndFetch();
         }
+
+        // --- IMPORT LOGIC ---
+        importBtn.addEventListener('click', () => {
+            importModal.classList.remove('hidden');
+        });
+
+        closeImportModalBtn.addEventListener('click', () => {
+            importModal.classList.add('hidden');
+            importDataArea.value = '';
+            importStatus.textContent = '';
+            importProgress.classList.add('hidden');
+        });
+
+        startImportBtn.addEventListener('click', async () => {
+            const data = importDataArea.value.trim();
+            if (!data) {
+                importStatus.textContent = 'El área de texto está vacía.';
+                return;
+            }
+
+            const rows = data.split('\n');
+            const totalRows = rows.length;
+
+            importProgress.classList.remove('hidden');
+            importProgressBar.style.width = '0%';
+            importStatus.textContent = `Iniciando importación de ${totalRows} registros...`;
+            startImportBtn.disabled = true;
+
+            for (let i = 0; i < totalRows; i++) {
+                const row = rows[i];
+                const columns = row.split('\t'); // Tab-separated
+
+                try {
+                    // EXPECTED COLUMN ORDER: Linea, Turno, Motivo, Inicio, Fin
+                    if (columns.length < 5) {
+                        console.warn(`Skipping row ${i+1}: Not enough columns.`);
+                        continue;
+                    }
+
+                    const lineId = parseInt(columns[0], 10);
+                    const shift = columns[1].trim();
+                    const reason = columns[2].trim();
+                    const startTimeStr = columns[3].trim();
+                    const endTimeStr = columns[4].trim();
+
+                    // Flexible date parsing
+                    const parseDate = (str) => {
+                        // Handles "DD/MM/YYYY, HH:MM:SS" and "DD/MM/YYYY HH:MM:SS"
+                        const cleanedStr = str.replace(',', '');
+                        const parts = cleanedStr.split(/[\s/:]+/);
+                        // Assuming DD/MM/YYYY HH:MM:SS
+                        return new Date(parts[2], parts[1]-1, parts[0], parts[3] || 0, parts[4] || 0, parts[5] || 0);
+                    };
+
+                    const startTime = Timestamp.fromDate(parseDate(startTimeStr));
+                    const endTime = Timestamp.fromDate(parseDate(endTimeStr));
+
+                    if (isNaN(startTime.seconds) || isNaN(endTime.seconds)) {
+                        console.warn(`Skipping row ${i+1}: Invalid date format. Original: "${startTimeStr}"`);
+                        continue;
+                    }
+
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/stops`), {
+                        lineId,
+                        shift,
+                        reason,
+                        startTime,
+                        endTime
+                    });
+
+                    // Update progress bar
+                    const progressPercentage = ((i + 1) / totalRows) * 100;
+                    importProgressBar.style.width = `${progressPercentage}%`;
+                    importStatus.textContent = `Importando ${i + 1} de ${totalRows}...`;
+                    
+                    // Small delay to prevent hitting write limits
+                    await new Promise(res => setTimeout(res, 50));
+
+                } catch (err) {
+                    console.error(`Error importing row ${i+1}:`, err, "Row data:", row);
+                    importStatus.textContent = `Error en la fila ${i+1}. Revise la consola (F12) para detalles.`;
+                    startImportBtn.disabled = false;
+                    return; // Stop on first error
+                }
+            }
+            importStatus.textContent = `¡Importación completada! ${totalRows} registros procesados.`;
+            startImportBtn.disabled = false;
+        });
 
         applyFiltersBtn.addEventListener('click', applyFiltersAndFetch);
         monthlySummaryBtn.addEventListener('click', generateMonthlySummary);

@@ -148,6 +148,10 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Exportar a Excel
                         </button>
+                        <button id="import-btn" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-upload"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            Importar Historial
+                        </button>
                     </div>
 
                     <div id="charts-view" class="mb-10">
@@ -204,6 +208,23 @@
                 <p id="security-error" class="text-red-500 text-sm mb-4 h-5"></p>
                 <button id="verify-security-code" class="w-full btn-primary py-2 rounded-md">Verificar</button>
                 <button id="close-security-modal" class="w-full mt-2 text-gray-600 hover:text-gray-800">Cancelar</button>
+            </div>
+        </div>
+
+        <!-- Modal de Importación -->
+        <div id="import-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center hidden">
+            <div class="card p-8 max-w-lg w-full">
+                <h3 class="text-xl font-bold text-gray-900 mb-4">Asistente de Importación de Datos</h3>
+                <p class="text-gray-600 mb-4 text-sm">Siga las instrucciones para preparar sus datos. Luego, pegue aquí los datos copiados (sin los encabezados).</p>
+                <textarea id="import-data-area" class="w-full h-40 p-2 border border-gray-300 rounded-md mb-2 font-mono text-xs" placeholder="Pegue aquí los datos de su hoja de cálculo..."></textarea>
+                <div id="import-progress" class="hidden w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="import-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p id="import-status" class="text-sm text-gray-500 mb-4 h-5"></p>
+                <div class="flex justify-end gap-4">
+                    <button id="close-import-modal" class="text-gray-600 hover:text-gray-800">Cancelar</button>
+                    <button id="start-import-btn" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">Iniciar Importación</button>
+                </div>
             </div>
         </div>
     </div>
@@ -267,6 +288,16 @@
         const verifySecurityCodeBtn = document.getElementById('verify-security-code');
         const closeSecurityModalBtn = document.getElementById('close-security-modal');
         const securityError = document.getElementById('security-error');
+        // Import elements
+        const importBtn = document.getElementById('import-btn');
+        const importModal = document.getElementById('import-modal');
+        const closeImportModalBtn = document.getElementById('close-import-modal');
+        const startImportBtn = document.getElementById('start-import-btn');
+        const importDataArea = document.getElementById('import-data-area');
+        const importProgress = document.getElementById('import-progress');
+        const importProgressBar = document.getElementById('import-progress-bar');
+        const importStatus = document.getElementById('import-status');
+
 
         // --- CÓDIGO DE SEGURIDAD ---
         // CAMBIA ESTE CÓDIGO POR UNO PERSONALIZADO DE 4 DÍGITOS
@@ -499,7 +530,6 @@
                 const allStops = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
                 renderSummaryTable(allStops);
-                // Fetch all data for charts to be accurate for the whole filtered period
                 fetchAllFilteredDataForCharts();
                 updatePaginationUI();
             } catch(error) {
@@ -516,7 +546,6 @@
                 renderCharts(allStops);
             } catch (error) {
                 console.error("Error fetching full data for charts:", error);
-                // Don't show an error to the user, just log it. Charts might be out of sync.
             }
         }
 
@@ -550,7 +579,6 @@
 
             const completedStops = stops.filter(s => s.startTime && s.endTime);
             
-            // Data for Reasons and Lines charts
             const reasonsData = completedStops.reduce((acc, stop) => {
                 const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
                 const reason = stop.reason || 'Sin Motivo';
@@ -566,7 +594,6 @@
                 return acc;
             }, {});
 
-            // Data for Trend Chart
             const dailyData = completedStops.reduce((acc, stop) => {
                 const date = stop.startTime.toDate().toISOString().slice(0, 10);
                 const duration = (stop.endTime.toDate() - stop.startTime.toDate()) / 60000;
